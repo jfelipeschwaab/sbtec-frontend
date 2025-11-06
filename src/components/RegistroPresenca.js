@@ -1,105 +1,154 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import {View, Text,TextInput,TouchableOpacity,FlatList,StyleSheet,Alert,} from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  StyleSheet,
+  Alert,
+  ActivityIndicator
+} from 'react-native';
 
 import { Checkbox } from 'react-native-paper';
-import ModalSelector from 'react-native-modal-selector'; // Importando o ModalSelector
-import { Ionicons } from '@expo/vector-icons'; // Importando o ícone da lupa
+// ModalSelector removido pois a turma já vem selecionada da tela anterior
+// Se precisar mudar de turma, o ideal é voltar para a tela de filtros.
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-// Função para gerar alunos aleatórios para uma turma específica
-const generateRandomStudents = (turma, studentsList) => {
-  const sortedStudents = studentsList.sort((a, b) => a.nome.localeCompare(b.nome));
-  return sortedStudents.map((student, index) => ({
-    matricula: (251047 + index).toString(),
-    turma: turma,
-    nome: student.nome,
-    presente: false,
-  }));
-};
+import { useRoute, useNavigation } from '@react-navigation/native';
+
+// AJUSTE AQUI SEU IP LOCAL PARA TESTES
+const API_URL = 'http://localhost:3000'; // Exemplo: http://192.168.0.15:3000
+
 const RegistroPresenca = () => {
-  const alunos1B = [
-    { nome: 'Ana Clara Silva Ribeiro' }, { nome: 'Bianca Machado Alves' }, { nome: 'Cleiton Roberto Santos' },
-    { nome: 'Gabriela Souza Costa' }, { nome: 'Lucas Pereira Silva' }, { nome: 'Mariana Alves Costa' },
-    { nome: 'Fernanda Lemos Oliveira' }, { nome: 'Ricardo Santana' }, { nome: 'Patricia Gomes' },
-    { nome: 'João Pedro Lima' }, { nome: 'Ana Beatriz Pereira' }, { nome: 'Carlos Henrique Rocha' }
-  ];
-  const alunos2A = [
-    { nome: 'Rodrigo Silva Oliveira' }, { nome: 'Juliana Costa Martins' }, { nome: 'Carlos Eduardo Lima' },
-    { nome: 'Marina Alves Ferreira' }, { nome: 'Ricardo Souza Mendes' }, { nome: 'Cláudia Lima Rocha' },
-    { nome: 'Roberto Pereira Souza' }, { nome: 'Fernanda Oliveira Silva' }, { nome: 'Thiago Rocha Lima' },
-    { nome: 'Camila Almeida Santos' }, { nome: 'Vanessa Costa Santos' }, { nome: 'Fábio Almeida Pires' }
-  ];
-  const alunos3C = [
-    { nome: 'Paula Martins Costa' }, { nome: 'Marcelo Souza Almeida' }, { nome: 'Tiago Oliveira Silva' },
-    { nome: 'Luana Pereira Ferreira' }, { nome: 'Daniela Gomes Ferreira' }, { nome: 'Eduardo Silva Rocha' },
-    { nome: 'Mariana Pinto Mendes' }, { nome: 'Carlos Alberto Santana' }, { nome: 'Renata Lima Souza' },
-    { nome: 'Juliana Rocha Costa' }, { nome: 'Victor Hugo Gomes' }, { nome: 'Luciana Almeida Santos' }
-  ];
-  const alunos1BList = generateRandomStudents('1*B', alunos1B);
-  const alunos2AList = generateRandomStudents('2*A', alunos2A);
-  const alunos3CList = generateRandomStudents('3*C', alunos3C);
-  const [alunos, setAlunos] = useState(alunos1BList);
+  const route = useRoute();
+  const navigation = useNavigation();
+
+  // Recebe os parâmetros vindos da tela InterfaceDocente
+  const { idAlocacao, turma, disciplina, etapa, anoEscolar } = route.params || {};
+
+  const [loading, setLoading] = useState(true);
+  const [alunos, setAlunos] = useState([]);
+  // Estado para controlar as presenças individualmente pelo ID do aluno
+  const [presencas, setPresencas] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTurma, setSelectedTurma] = useState('1*B');
+
   const dataAtual = new Date().toLocaleDateString('pt-BR');
-  const filteredAlunos = alunos.filter((aluno) =>
-    aluno.turma === selectedTurma && aluno.nome.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-  const handleCheckboxChange = (matricula) => {
-    setAlunos((prevAlunos) =>
-      prevAlunos.map((aluno) =>
-        aluno.matricula === matricula ? { ...aluno, presente: !aluno.presente } : aluno
-      )
-    );
-  };
-  const handleSave = () => {
-    Alert.alert('Sucesso', 'Lista salva!');
-  };
-  const handleTurmaChange = (turma) => {
-    setSelectedTurma(turma);
-    if (turma === '1*B') {
-      setAlunos(alunos1BList);
-    } else if (turma === '2*A') {
-      setAlunos(alunos2AList);
-    } else if (turma === '3*C') {
-      setAlunos(alunos3CList);
+
+  // --- BUSCAR ALUNOS DA API ---
+  useEffect(() => {
+    if (!idAlocacao) {
+      Alert.alert("Erro", "Alocação não informada. Volte e selecione novamente.");
+      navigation.goBack();
+      return;
     }
+
+    const fetchAlunos = async () => {
+      try {
+        setLoading(true);
+        // Chama o endpoint correto: /turmas/:id/alunos
+        const response = await fetch(`${API_URL}/turmas/${idAlocacao}/alunos`);
+
+        if (!response.ok) {
+            throw new Error(`Erro HTTP: ${response.status}`);
+        }
+
+        const data = await response.json();
+        setAlunos(data.alunos || []);
+
+        // Inicializa todas as presenças como 'false' (ou 'true' se preferir começar com todos presentes)
+        const presencasIniciais = {};
+        (data.alunos || []).forEach(aluno => {
+            presencasIniciais[aluno.id_aluno] = false;
+        });
+        setPresencas(presencasIniciais);
+
+      } catch (error) {
+        Alert.alert("Erro", "Não foi possível carregar a lista de alunos.");
+        console.error("Erro ao buscar alunos:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAlunos();
+  }, [idAlocacao]);
+
+  // --- FILTRO DE BUSCA ---
+  const filteredAlunos = useMemo(() => {
+    return alunos.filter((aluno) =>
+      aluno.nome.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [alunos, searchTerm]);
+
+  // --- HANDLERS ---
+  const handleCheckboxChange = (idAluno) => {
+    setPresencas(prev => ({
+      ...prev,
+      [idAluno]: !prev[idAluno] // Inverte o valor atual
+    }));
   };
+
+  const handleSave = async () => {
+    // Aqui você implementaria a lógica para ENVIAR as presenças para o backend
+    // Por enquanto, apenas mostramos um alerta com os dados que seriam enviados.
+    const dadosParaEnviar = {
+        id_alocacao: idAlocacao,
+        data: new Date().toISOString().split('T')[0], // AAAA-MM-DD
+        etapa: etapa,
+        presencas: Object.entries(presencas).map(([id_aluno, presente]) => ({
+            id_aluno: parseInt(id_aluno),
+            presente
+        }))
+    };
+
+    console.log("Salvando presenças:", JSON.stringify(dadosParaEnviar, null, 2));
+    Alert.alert('Sucesso', 'Lista de presença salva localmente! (Backend pendente)');
+    // navigation.goBack(); // Opcional: voltar após salvar
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#1A128F" />
+        <Text style={{ marginTop: 20 }}>Carregando alunos...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar style="auto" />
-      
+
       <View style={styles.header}>
-      <LinearGradient
-        colors={['#080529', '#1A128F']} // Gradiente do fundo do título
-        style={styles.gradientHeader}
-      >
-        <Text style={styles.title}>Registro de Presença</Text>
-      </LinearGradient>
-      </View>
-      <View style={styles.selectContainer}>
-        <Text style={styles.selectedText}>Selecione a turma:</Text>
-        <ModalSelector
-          data={[
-            { key: 0, label: '1*B' },
-            { key: 1, label: '2*A' },
-            { key: 2, label: '3*C' },
-          ]}
-          initValue={selectedTurma}
-          onChange={(option) => handleTurmaChange(option.label)}
+        <LinearGradient
+          colors={['#080529', '#1A128F']}
+          style={styles.gradientHeader}
         >
-          <TextInput
-            style={[styles.input, styles.flex1]}
-            placeholder="Selecione a Turma"
-            value={selectedTurma}
+          <Text style={styles.title}>Registro de Presença</Text>
+           {/* Subtítulo opcional para mostrar contexto */}
+          <Text style={{color: '#F9DC5C', fontSize: 14, marginTop: 5}}>
+             {turma} - {disciplina} ({etapa})
+          </Text>
+        </LinearGradient>
+      </View>
+
+      <View style={styles.selectContainer}>
+        {/* Exibe a Turma fixa vinda da tela anterior */}
+        <Text style={styles.selectedText}>Turma:</Text>
+        <TextInput
+            style={[styles.input, styles.flex1, { backgroundColor: '#e0e0e0', color: '#555' }]} // Estilo visual de desabilitado
+            value={turma}
             editable={false}
-          />
-        </ModalSelector>
+        />
+
         <View style={styles.dateContainer}>
           <Text style={styles.dateText}>{dataAtual}</Text>
         </View>
       </View>
-      {/* Barra de Pesquisa com ícone de lupa */}
+
+      {/* Barra de Pesquisa */}
       <View style={styles.searchBar}>
         <Ionicons name="search" size={24} color="gray" style={styles.searchIcon} />
         <TextInput
@@ -109,39 +158,49 @@ const RegistroPresenca = () => {
           onChangeText={setSearchTerm}
         />
       </View>
+
       <View style={styles.tableHeader}>
         <Text style={styles.tableHeaderText}>Matrícula</Text>
-        <Text style={styles.tableHeaderText}>Turma</Text>
-        <Text style={styles.tableHeaderText}>Nome</Text>
+        {/* Removi a coluna 'Turma' pois já é sabido que todos são da mesma turma nesta tela,
+            mas se quiser manter, pode descomentar abaixo e ajustar os flex no styles */}
+        {/* <Text style={styles.tableHeaderText}>Turma</Text> */}
+        <Text style={[styles.tableHeaderText, { flex: 2 }]}>Nome</Text>
+        <Text style={[styles.tableHeaderText, { textAlign: 'center', flex: 0.5 }]}>Presença</Text>
       </View>
+
       <FlatList
         data={filteredAlunos}
-        keyExtractor={(item) => item.matricula}
+        keyExtractor={(item) => item.id_aluno.toString()}
         renderItem={({ item, index }) => (
           <View
-          style={[styles.listItem, {
-            backgroundColor: index % 2 === 0 ? '#D3D3D3' : '#FFFFFF', // Cor alternada para as linhas
-          }]}>
-          <Text style={styles.listTextMatricula}>{item.matricula}</Text>
-          <Text style={styles.listTextTurma}>{item.turma}</Text>
-          <Text style={styles.listTextNome}>{item.nome}</Text>
-    
-          {/* Envolvendo o Checkbox com uma View para adicionar borda */}
-          <View style={styles.checkboxContainer}>
-            <Checkbox
-              status={item.presente ? 'checked' : 'unchecked'}
-              onPress={() => handleCheckboxChange(item.matricula)}
-              color={item.presente ? 'black' : 'gray'}
-              size={10} // Tamanho reduzido do checkbox
-              style={{ transform: [{ scale: 0.9 }] }}
+            style={[styles.listItem, {
+              backgroundColor: index % 2 === 0 ? '#D3D3D3' : '#FFFFFF',
+            }]}
+          >
+            <Text style={styles.listTextMatricula}>{item.matricula}</Text>
+            {/* <Text style={styles.listTextTurma}>{turma}</Text> */}
+            <Text style={styles.listTextNome}>{item.nome}</Text>
+
+            <View style={styles.checkboxContainer}>
+              <Checkbox
+                status={presencas[item.id_aluno] ? 'checked' : 'unchecked'}
+                onPress={() => handleCheckboxChange(item.id_aluno)}
+                color={'#1A128F'} // Usando a cor do tema
+                uncheckedColor={'gray'}
               />
             </View>
           </View>
         )}
+        ListEmptyComponent={
+            <Text style={{ textAlign: 'center', marginTop: 20, color: 'gray' }}>
+                Nenhum aluno encontrado para esta turma.
+            </Text>
+        }
       />
+
       <TouchableOpacity style={styles.saveButtonContainer} onPress={handleSave}>
-      <LinearGradient
-          colors={['#080529', '#1A128F']} // Gradiente do botão
+        <LinearGradient
+          colors={['#080529', '#1A128F']}
           style={styles.saveButton}
         >
           <Text style={styles.saveButtonText}>Salvar Lista</Text>
@@ -150,6 +209,7 @@ const RegistroPresenca = () => {
     </View>
   );
 };
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -158,7 +218,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 30, // Reduzi um pouco
   },
   gradientHeader: {
     alignItems: 'center',
@@ -175,13 +235,14 @@ const styles = StyleSheet.create({
   selectContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 15,
     justifyContent: 'space-between',
   },
   selectedText: {
     fontSize: 16,
     marginRight: 10,
     color: '#333',
+    fontWeight: 'bold'
   },
   flex1: {
     flex: 1,
@@ -189,52 +250,56 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: '#ddd',
-    padding: 12,
+    padding: 10, // Reduzi levemente
     borderRadius: 6,
-    width: '100%',
-    backgroundColor: '#f9f9f9', // Cor de fundo mais suave
+    // width: '100%', // Removido pois está num flex row
+    backgroundColor: '#f9f9f9',
     fontSize: 16,
     color: '#333',
-    textAlign: 'left', // Centraliza o texto dentro do campo
+    textAlign: 'left',
+    marginRight: 10, // Espaço para a data
   },
   dateContainer: {
-    marginLeft: 10,
-    padding: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 10, // Borda arredondada
-    backgroundColor: '#f9f9f9', // Cor de fundo suave
-    flexDirection: 'row',
+    borderRadius: 10,
+    backgroundColor: '#f9f9f9',
     justifyContent: 'center',
     alignItems: 'center',
   },
   dateText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: 'normal',
+    color: '#333'
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 15,
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 12,
     paddingHorizontal: 10,
-    width: '50%', // Define uma largura menor
-    alignSelf: 'left', // Centraliza na tela
+    width: '100%', // Aumentei para 100% para ficar mais usável no mobile
+    alignSelf: 'center',
   },
   searchIcon: {
     marginRight: 10,
   },
   searchInput: {
     flex: 1,
-    padding: 10,
+    paddingVertical: 10, // Melhor controle de altura
+    fontSize: 16
   },
   tableHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center', // Centraliza verticalmente os textos do header
     backgroundColor: '#1C138D',
-    padding: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
     borderRadius: 5,
     marginBottom: 10,
   },
@@ -243,61 +308,59 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'left',
     color: 'white',
+    fontSize: 15,
   },
   listItem: {
     flexDirection: 'row',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between', // Garante distribuição
     alignItems: 'center',
-    paddingVertical: 15,
-    marginBottom: 10,
+    paddingVertical: 12, // Reduzi levemente para caber mais alunos
+    paddingHorizontal: 5,
+    marginBottom: 5, // Espaçamento menor entre linhas
     borderRadius: 5,
   },
   listTextMatricula: {
-    flex: 0.4, // Diminui o espaço para a matrícula
+    flex: 1,
     textAlign: 'left',
-    fontSize: 16,
-    paddingLeft: 10, // Adiciona um pouco de espaço à esquerda da matrícula
+    fontSize: 15,
+    paddingLeft: 5,
   },
-  listTextTurma: {
-    flex: 0.3, // Diminui o espaço para a turma
-    textAlign: 'left',
-    fontSize: 16,
-    paddingLeft: 10, // Alinha o texto para a esquerda
-  },
+  // listTextTurma: { ... }, // Removido se não for usar a coluna Turma
   listTextNome: {
-    flex: 1, // Dá mais espaço ao nome, garantindo que ele tenha mais largura
+    flex: 2, // Mais espaço para o nome
     textAlign: 'left',
-    fontSize: 16,
-    paddingLeft: 10, // Garante que o nome não fique colado nas bordas
+    fontSize: 15,
+    paddingLeft: 5,
   },
   checkboxContainer: {
-    borderWidth: 0.9,
-    borderRadius: 0,
-    padding: 0,
-    borderColor: '#080527',
-    backgroundColor: '#ffff',
-  },
-  saveButtonContainer: {
-    alignItems: 'center', // Centraliza o botão na tela
-    marginTop: 20,
-  },
-  
-  saveButton: {
-    width: '50%', // Reduz a largura do botão
-    paddingVertical: 12, // Altura do botão
-    borderRadius: 5,
+    flex: 0.5, // Espaço fixo para o checkbox
     alignItems: 'center',
     justifyContent: 'center',
+    // borderWidth: 1, // Opcional: visualizar a área do checkbox
+    // borderColor: 'red'
   },
-  
+  saveButtonContainer: {
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 20, // Margem inferior para não colar na borda da tela
+  },
+  saveButton: {
+    width: '60%', // Um pouco mais largo
+    paddingVertical: 15,
+    borderRadius: 25, // Mais arredondado fica mais moderno
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 3, // Sombra no Android
+    shadowColor: '#000', // Sombra no iOS
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
   saveButtonText: {
-    color: '#fff', // Texto branco
-    fontSize: 16,
+    color: '#fff',
+    fontSize: 18,
     fontWeight: 'bold',
   },
-  dateText: {
-    fontSize: 16,
-    fontWeight: 'normal',  // Mudando para 'normal' para não deixar a data em negrito
-  },
 });
+
 export default RegistroPresenca;
