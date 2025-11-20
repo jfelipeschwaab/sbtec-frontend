@@ -91,21 +91,36 @@ const RegistroPresenca = () => {
   };
 
   const handleSave = async () => {
-    // Aqui você implementaria a lógica para ENVIAR as presenças para o backend
-    // Por enquanto, apenas mostramos um alerta com os dados que seriam enviados.
+    // Prepara o objeto exatamente como o backend espera
     const dadosParaEnviar = {
         id_alocacao: idAlocacao,
-        data: new Date().toISOString().split('T')[0], // AAAA-MM-DD
+        data: new Date().toISOString().split('T')[0], // Formato YYYY-MM-DD
         etapa: etapa,
         presencas: Object.entries(presencas).map(([id_aluno, presente]) => ({
             id_aluno: parseInt(id_aluno),
-            presente
+            presente: presente
         }))
     };
 
-    console.log("Salvando presenças:", JSON.stringify(dadosParaEnviar, null, 2));
-    Alert.alert('Sucesso', 'Lista de presença salva localmente! (Backend pendente)');
-    // navigation.goBack(); // Opcional: voltar após salvar
+    try {
+      const response = await fetch(`${API_URL}/turmas/registrar-presenca`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(dadosParaEnviar),
+      });
+
+      if (response.ok) {
+        Alert.alert('Sucesso', 'Chamada realizada e salva no servidor!');
+        navigation.goBack(); // Volta para a tela anterior após salvar
+      } else {
+        Alert.alert('Erro', 'Houve um erro ao salvar no servidor.');
+      }
+    } catch (error) {
+      console.error("Erro de requisição:", error);
+      Alert.alert('Erro', 'Falha na conexão com o backend.');
+    }
   };
 
   if (loading) {

@@ -37,7 +37,6 @@ const InterfaceDocente = () => {
   const [telaAtiva, setTelaAtiva] = useState('Inicio');
   const [footerExpanded, setFooterExpanded] = useState(false);
 
-  // --- CHAMADAS PARA API ---
   useEffect(() => {
     const fetchData = async () => {
       try {
